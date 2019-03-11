@@ -3,6 +3,9 @@ Specific tests for the plain functionality of each ThreadHandler function
 
 Khai, 27.02.2019
 """
+import datetime
+import json
+import requests
 from unittest import TestCase
 
 from ..handlers import ThreadHandler
@@ -40,3 +43,40 @@ class ThreadHandlerTestCase(TestCase):
 
     def test_run_with_simple_function(self):
         """Test .run() of handler with a simple function"""
+
+        def call_httpbin(data, url="https://httpbin.org/post"):
+            """
+            Calls https://httpbin.org/post with a data payload
+
+            Khai, 11.03.2019
+            """
+            response = requests.post(url, data=json.dumps(data))
+            return response.json()
+
+        # Initiate payloads to be tested with
+        payloads = []
+        for i in range(10):
+            payloads.append({
+                'no': i
+            })
+
+        start_1 = datetime.datetime.now()
+        results_1 = []
+        for data in payloads:
+            results_1.append(call_httpbin(data))
+        end_1 = datetime.datetime.now()
+        time_taken_1 = end_1 - start_1
+
+        # This counts as a proper initialization
+        start_2 = datetime.datetime.now()
+        threadhandler = ThreadHandler(call_httpbin, payloads, threads=2)
+        results_2 = threadhandler.run()
+        end_2 = datetime.datetime.now()
+        time_taken_2 = end_2 - start_2
+
+        # The threaded handler should have the same results as the 
+        # non threaded function
+        self.assertEqual(results_1, results_2)
+        self.assertGreater(time_taken_1, time_taken_2)
+
+
