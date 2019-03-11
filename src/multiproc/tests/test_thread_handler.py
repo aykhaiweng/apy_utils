@@ -5,7 +5,7 @@ Khai, 27.02.2019
 """
 from unittest import TestCase
 
-from ..shortcuts import ThreadHandler
+from ..handlers import ThreadHandler
 
 
 class ThreadHandlerTestCase(TestCase):
@@ -37,3 +37,6 @@ class ThreadHandlerTestCase(TestCase):
 
         # This counts as a proper initialization
         threadhandler = ThreadHandler(dummy_func, dummy_list)
+
+    def test_run_with_simple_function(self):
+        """Test .run() of handler with a simple function"""
