@@ -3,10 +3,11 @@ Shortcut helpers for creating Threads and Multiprocess functions
 
 Khai, 27.02.2019
 """
+import traceback
 import logging
-
+import threading
+from collections import OrderedDict
 from collections.abc import Iterable
-from threading import Thread
 from queue import Queue
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,59 @@ def thread_wrapper(queue, results, func):
         queue.task_done()
 
     return True
+
+
+class CustomThread(threading.Thread):
+    """
+    Worker Thread that does work from a Queue with Exception handling
+
+    Khai, 11.03.2019
+    """
+
+    def __init__(self, target, queue, results, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.args = kwargs.get('args')
+        self.target = target
+        self.queue = queue
+        self.results = results
+
+        self.exceptions = []
+        self.has_exceptions = False
+
+    def run(self):
+        """
+        Run the function via the Thread.
+
+        Khai, 11.03.2019
+        """
+        queue = self.queue
+        results = self.results
+        target = self.target
+
+        while not queue.empty():
+            position, obj = queue.get()
+
+            try:
+                # Function invocation
+                result = target(obj)
+                results[position] = result
+            except Exception as e:
+                message = (
+                    f"Error when processing object `{obj}` with function "
+                    f"`{target}`"
+                )
+                exception = {
+                    'position': position,
+                    'exception': e,
+                    'func': target,
+                    'obj': obj,
+                    'traceback': traceback.format_exc()
+                }
+                self.exceptions.append(exception)
+                self.has_exceptions = True
+
+            queue.task_done()
 
 
 class ThreadHandler:
@@ -65,11 +119,9 @@ class ThreadHandler:
     Khai, 27.02.2019
     """
 
-    def __init__(
-        self, func, objs,
-        threads=1, wrapper=thread_wrapper,
-        *args, **kwargs
-    ):
+    def __init__(self, func, objs, threads=1, wrapper=thread_wrapper,
+                 thread_class=CustomThread, fail_silently=False,
+                 *args, **kwargs):
         # Checking func
         if callable(func) is False:
             raise TypeError("func input has to be a callable.")
@@ -82,16 +134,23 @@ class ThreadHandler:
         if isinstance(objs, Iterable) is False:
             raise TypeError("obs input has to be iterable.")
 
+        # Options
+        self.fail_silently = fail_silently
+
         # Assigning class variables
         self.func = func
         self.wrapper = wrapper
         self.objs = objs
         self.threads = threads
+        self.thread_class = thread_class
         self.kwargs = kwargs
         self.args = args
 
         # Count the objects being worked on
         self.count = self.count_objects(self.objs)
+
+        # Store the exceptions
+        self.worker_exceptions = []
 
     @classmethod
     def count_objects(cls, objs):
@@ -126,7 +185,8 @@ class ThreadHandler:
 
         return queue
 
-    def run(self, func=None, objs=None, threads=None, wrapper=None):
+    def run(self, func=None, objs=None, threads=None,
+            wrapper=None, thread_class=None, fail_silently=None):
         """
         Starting point.
 
@@ -136,9 +196,12 @@ class ThreadHandler:
         wrapper = wrapper or self.wrapper
         objs = objs or self.objs
         threads = threads or self.threads
+        thread_class = thread_class or self.thread_class
         count = self.count or self.count_objects(objs)
+        fail_silently = fail_silently or self.fail_silently
 
         # Create a data store for the objects
+        errors = []
         results = [{} for x in objs]
 
         # Determine the number of threads to be used as the minimum
@@ -154,8 +217,11 @@ class ThreadHandler:
 
         workers = []
         for i in range(threads):
-            worker = Thread(target=wrapper, args=(queue, results, func))
-            worker.setDaemon(True)
+            worker = thread_class(
+                target=func, queue=queue, results=results
+            )
+            # worker.setDaemon(True)
+            print(f"Starting worker: {worker}")
             worker.start()
             workers.append(worker)
 
@@ -163,7 +229,22 @@ class ThreadHandler:
         for i in range(threads):
             queue.put(None)
         for w in workers:
-            w.join()
+            w.join(timeout=30)
+
+        # Check for Exceptions:
+        for w in workers:
+            if w.has_exceptions:
+                self.worker_exceptions.extend(w.exceptions)
+
+        import json
+        import pprint
+        print("============")
+        pprint.pprint(self.worker_exceptions)
+
+        if self.worker_exceptions:
+            if fail_silently is False:
+                exception = self.worker_exceptions[0]['exception']
+                raise exception
 
         return results
 
