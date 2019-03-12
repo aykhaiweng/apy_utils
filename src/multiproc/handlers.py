@@ -6,7 +6,6 @@ Khai, 27.02.2019
 import traceback
 import logging
 import threading
-from collections import OrderedDict
 from collections.abc import Iterable
 from queue import Queue
 
@@ -221,7 +220,6 @@ class ThreadHandler:
                 target=func, queue=queue, results=results
             )
             # worker.setDaemon(True)
-            print(f"Starting worker: {worker}")
             worker.start()
             workers.append(worker)
 
@@ -236,9 +234,6 @@ class ThreadHandler:
             if w.has_exceptions:
                 self.worker_exceptions.extend(w.exceptions)
 
-        import json
-        import pprint
-        print("============")
         pprint.pprint(self.worker_exceptions)
 
         if self.worker_exceptions:
